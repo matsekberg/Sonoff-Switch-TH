@@ -9,11 +9,9 @@
    https://www.itead.cc/wiki/Sonoff_TH_10/16
 
    Flashed via USB/OTA in Arduino IDE with these parameters:
-   Board:       Generic ESP8285 Module
+   Board:       Generic ESP8266 Module
    Flash size:  1M (64K SPIFFS)
-   
-   Based on this work:
-   https://github.com/davidmpye/Sonoff-Touch-MQTT
+
 */
 
 #include <ESP8266WiFi.h>
@@ -24,6 +22,11 @@
 
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
+
+#define LONG_PRESS_MS 1000
+#define SHORT_PRESS_MS 100
+#define CONFIG_WIFI_PRESS_MS 5000
+#define CONFIG_TOUCHES_COUNT 3
 #define MQTT_CHECK_MS 30000
 
 //#define F(x) (x)
@@ -52,12 +55,14 @@ WiFiManagerParameter custom_group_id = NULL;
 #define OTA_PASS "UPDATE_PW"
 #define OTA_PORT 8266
 
+#define BUTTON_PIN 0
 #define RELAY_PIN 12
 #define LED_PIN 13
 
 volatile int desiredRelayState = 0;
 volatile int relayState = 0;
 volatile unsigned long millisSinceChange = 0;
+volatile int noOfConfigTouches = 0;
 
 volatile boolean sendGroupEventTopic = false;
 volatile boolean configWifi = false;
@@ -115,8 +120,7 @@ void checkMQTTConnection() {
 //
 void MQTTcallback(char* topic, byte* payload, unsigned int length) {
   Serial.print(F("MQTT sub: "));
-  Serial.print(topic);
-  Serial.println(F(" = "));
+  Serial.println(topic);
 
   if (!strcmp(topic, actionTopic.c_str())) {
     if ((char)payload[0] == '1' || ! strncasecmp_P((char *)payload, "on", length)) {
@@ -132,6 +136,62 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
       sendStatus = true;
     }
   }
+}
+
+//
+// Handle short touch
+//
+void shortPress() {
+  desiredRelayState = !desiredRelayState; //Toggle relay state.
+  sendGroupEventTopic = false;
+  sendEvent = true;
+  noOfConfigTouches = 0;
+}
+
+//
+// Handle long touch
+//
+void longPress() {
+  desiredRelayState = !desiredRelayState; //Toggle relay state.
+  sendGroupEventTopic = true;
+  sendEvent = true;
+  noOfConfigTouches = 0;
+}
+
+//
+// Handle looong config touch
+//
+void configWifiPress() {
+  noOfConfigTouches++;
+  if (noOfConfigTouches >= CONFIG_TOUCHES_COUNT)
+    configWifi = true;
+}
+
+
+//
+// This is executed on touch
+//
+void buttonChangeCallback() {
+  if (digitalRead(0) == 1) {
+
+    // Button has been released, trigger one of the two possible options.
+    if (millis() - millisSinceChange > CONFIG_WIFI_PRESS_MS) {
+      configWifiPress();
+    }
+    else if (millis() - millisSinceChange > LONG_PRESS_MS) {
+      longPress();
+    }
+    else if (millis() - millisSinceChange > SHORT_PRESS_MS) {
+      shortPress();
+    }
+    else {
+      //Too short to register as a press
+    }
+  }
+  else {
+    //Just been pressed - do nothing until released.
+  }
+  millisSinceChange = millis();
 }
 
 
@@ -188,6 +248,7 @@ void setup() {
   Serial.println(F("Initialising"));
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
 
   digitalWrite(LED_PIN, HIGH); //LED off.
@@ -209,6 +270,10 @@ void setup() {
   ArduinoOTA.setHostname(custom_unit_id.getValue());
   ArduinoOTA.setPassword(OTA_PASS);
   ArduinoOTA.begin();
+
+  // Enable interrupt for button press
+  Serial.println(F("Enabling touch switch interrupt"));
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonChangeCallback, CHANGE);
 }
 
 

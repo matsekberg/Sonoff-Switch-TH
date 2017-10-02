@@ -5,8 +5,17 @@
    Supports OTA update
    Mats Ekberg (C) 2017 GNU GPL v3
 
+   Supports sensors (has to be recompiled if change):
+     DHT 11
+     DHT 21  (AM2301)  This is the default sensor type
+     DHT 22  (AM2302)
+
    Runs on this harware:
    https://www.itead.cc/wiki/Sonoff_TH_10/16
+
+   Uses these libraries:
+   https://github.com/adafruit/DHT-sensor-library
+   https://github.com/adafruit/Adafruit_Sensor
 
    Flashed via USB/OTA in Arduino IDE with these parameters:
    Board:       Generic ESP8266 Module
@@ -19,6 +28,7 @@
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include "DHT.h"
 
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
@@ -27,7 +37,7 @@
 #define SHORT_PRESS_MS 100
 #define CONFIG_WIFI_PRESS_MS 5000
 #define CONFIG_TOUCHES_COUNT 3
-#define MQTT_CHECK_MS 30000
+#define MQTT_CHECK_MS 15000
 
 //#define F(x) (x)
 
@@ -49,7 +59,6 @@ WiFiManagerParameter custom_mqtt_user = NULL;
 WiFiManagerParameter custom_mqtt_pass = NULL;
 WiFiManagerParameter custom_unit_id = NULL;
 WiFiManagerParameter custom_group_id = NULL;
-///////
 
 
 #define OTA_PASS "UPDATE_PW"
@@ -58,6 +67,11 @@ WiFiManagerParameter custom_group_id = NULL;
 #define BUTTON_PIN 0
 #define RELAY_PIN 12
 #define LED_PIN 13
+#define DHTPIN 14
+
+//#define DHTTYPE DHT11   // DHT 11
+//#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
+#define DHTTYPE DHT21   // DHT 21 (AM2301)
 
 volatile int desiredRelayState = 0;
 volatile int relayState = 0;
@@ -69,10 +83,16 @@ volatile boolean configWifi = false;
 volatile boolean sendEvent = true;
 boolean sendStatus = true;
 
+float humid = NAN;
+float temp = NAN;
+boolean sendSensors = false;
+
 unsigned long lastMQTTCheck = -MQTT_CHECK_MS; //This will force an immediate check on init.
 
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+DHT dht(DHTPIN, DHTTYPE);
 
 bool printedWifiToSerial = false;
 
@@ -81,6 +101,9 @@ String eventTopic;       // published when the switch is touched
 String groupEventTopic;  // published when the switch was long touched
 String statusTopic;      // published when the relay changes state wo switch touch
 String actionTopic;      // subscribed to to change relay status
+String groupActionTopic; // subscribed to to change relay status based on groupid
+String sensorTempTopic;  // publish temp sensor value
+String sensorHumidTopic; // publish humidity sensor value
 
 //
 // Connect to MQTT broker
@@ -96,6 +119,7 @@ void checkMQTTConnection() {
       if (client.connect(custom_unit_id.getValue(), custom_mqtt_user.getValue(), custom_mqtt_pass.getValue())) {
         Serial.println(F("connected"));
         client.subscribe(actionTopic.c_str());
+        client.subscribe(groupActionTopic.c_str());
       } else {
         Serial.print(F("failed, rc="));
         Serial.println(client.state());
@@ -122,7 +146,7 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
   Serial.print(F("MQTT sub: "));
   Serial.println(topic);
 
-  if (!strcmp(topic, actionTopic.c_str())) {
+  if (!strcmp(topic, actionTopic.c_str()) || !strcmp(topic, groupActionTopic.c_str())) {
     if ((char)payload[0] == '1' || ! strncasecmp_P((char *)payload, "on", length)) {
       desiredRelayState = 1;
     }
@@ -237,6 +261,34 @@ void handleStatusChange() {
     sendStatus = false;
   }
 
+  if (sendSensors)
+  {
+    if (!isnan(temp))
+    {
+      Serial.print(F("MQTT pub: "));
+      Serial.print(temp);
+      Serial.print(F(" to "));
+      Serial.println(sensorTempTopic);
+      client.publish(sensorTempTopic.c_str(), String(temp).c_str());
+    }
+    else
+    {
+      Serial.println(F("No temp data"));
+    }
+    if (!isnan(humid))
+    {
+      Serial.print(F("MQTT pub: "));
+      Serial.print(humid);
+      Serial.print(F(" to "));
+      Serial.println(sensorHumidTopic);
+      client.publish(sensorHumidTopic.c_str(), String(humid).c_str());
+    }
+    else
+    {
+      Serial.println(F("No humidity data"));
+    }
+    sendSensors = false;
+  }
 }
 
 
@@ -259,8 +311,11 @@ void setup() {
   eventTopic = String(F("event/")) + custom_unit_id.getValue() + String(F("/switch"));
   groupEventTopic = String(F("event/")) + custom_group_id.getValue() + String(F("/switch"));
   statusTopic = String(F("status/")) + custom_unit_id.getValue() + String(F("/relay"));
+  sensorTempTopic = String(F("sensor/")) + custom_unit_id.getValue() + String(F("/temp"));
+  sensorHumidTopic = String(F("sensor/")) + custom_unit_id.getValue() + String(F("/humid"));
   // and subscribe topic
   actionTopic = String(F("action/")) + custom_unit_id.getValue() + String(F("/relay"));
+  groupActionTopic = String(F("action/")) + custom_group_id.getValue() + String(F("/relay"));
 
   client.setServer(custom_mqtt_server.getValue(), atoi(custom_mqtt_port.getValue()));
   client.setCallback(MQTTcallback);
@@ -270,6 +325,8 @@ void setup() {
   ArduinoOTA.setHostname(custom_unit_id.getValue());
   ArduinoOTA.setPassword(OTA_PASS);
   ArduinoOTA.begin();
+
+  dht.begin();
 
   // Enable interrupt for button press
   Serial.println(F("Enabling touch switch interrupt"));
@@ -293,7 +350,12 @@ void loop() {
   // Check MQTT connection
   if (millis() - lastMQTTCheck >= MQTT_CHECK_MS) {
     checkMQTTConnection();
+    // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+    humid = dht.readHumidity();
+    // Read temperature as Celsius (the default)
+    temp = dht.readTemperature();
     lastMQTTCheck = millis();
+    sendSensors = true;
   }
 
   // Handle any pending MQTT messages

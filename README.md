@@ -1,8 +1,7 @@
 # Sonoff-Switch-TeHu
 
+Firmware to use a Sonoff TH10/16 device as a remote relay and temp/humidity sensor with MQTT and WiFi capabilities.
+
 !!! WORK IN PROGRESS !!!
 
-## Features
-* Remote 10 or 16 amp relay
-* Remote temperature and humidity sensor
-* Simple regulator to control relay from temp/humidity
+Learn more in the wiki: https://github.com/matsekberg/Sonoff-Switch-TeHu/wiki

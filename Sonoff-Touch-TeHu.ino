@@ -1,12 +1,12 @@
 /*
-   Sonoff-Touch-WallSw
-   Firmware to use a Sonoff Touch device as a wall switch with integrated relay, MQTT and WiFi capabilities.
+   Sonoff-Touch-TeHu
+   Firmware to use a Sonoff TH10/16 device as a remote relay and temp/humidity sensor with MQTT and WiFi capabilities.
 
    Supports OTA update
    Mats Ekberg (C) 2017 GNU GPL v3
 
    Runs on this harware:
-   http://sonoff.itead.cc/en/products/residential/sonoff-touch
+   https://www.itead.cc/wiki/Sonoff_TH_10/16
 
    Flashed via USB/OTA in Arduino IDE with these parameters:
    Board:       Generic ESP8285 Module
@@ -24,14 +24,9 @@
 
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
 
-#define LONG_PRESS_MS 1000
-#define SHORT_PRESS_MS 100
-#define CONFIG_WIFI_PRESS_MS 5000
-#define CONFIG_TOUCHES_COUNT 3
-
 #define MQTT_CHECK_MS 30000
 
-#define F(x) (x)
+//#define F(x) (x)
 
 ////// config values
 //define your default values here, if there are different values in config.json, they are overwritten.
@@ -39,8 +34,8 @@ char mqtt_server[40] = "10.0.1.50";
 char mqtt_port[6] = "1883";
 char mqtt_user[24] = "";
 char mqtt_pass[24] = "";
-char unit_id[16] = "wallsw0";
-char group_id[16] = "wallswgrp0";
+char unit_id[16] = "thsw0";
+char group_id[16] = "thswgrp0";
 
 // The extra parameters to be configured (can be either global or just in the setup)
 // After connecting, parameter.getValue() will get you the configured value
@@ -57,14 +52,12 @@ WiFiManagerParameter custom_group_id = NULL;
 #define OTA_PASS "UPDATE_PW"
 #define OTA_PORT 8266
 
-#define BUTTON_PIN 0
 #define RELAY_PIN 12
 #define LED_PIN 13
 
 volatile int desiredRelayState = 0;
 volatile int relayState = 0;
 volatile unsigned long millisSinceChange = 0;
-volatile int noOfConfigTouches = 0;
 
 volatile boolean sendGroupEventTopic = false;
 volatile boolean configWifi = false;
@@ -141,62 +134,6 @@ void MQTTcallback(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-//
-// Handle short touch
-//
-void shortPress() {
-  desiredRelayState = !desiredRelayState; //Toggle relay state.
-  sendGroupEventTopic = false;
-  sendEvent = true;
-  noOfConfigTouches = 0;
-}
-
-//
-// Handle long touch
-//
-void longPress() {
-  desiredRelayState = !desiredRelayState; //Toggle relay state.
-  sendGroupEventTopic = true;
-  sendEvent = true;
-  noOfConfigTouches = 0;
-}
-
-//
-// Handle looong config touch
-//
-void configWifiPress() {
-  noOfConfigTouches++;
-  if (noOfConfigTouches >= CONFIG_TOUCHES_COUNT)
-    configWifi = true;
-}
-
-
-//
-// This is executed on touch
-//
-void buttonChangeCallback() {
-  if (digitalRead(0) == 1) {
-
-    // Button has been released, trigger one of the two possible options.
-    if (millis() - millisSinceChange > CONFIG_WIFI_PRESS_MS) {
-      configWifiPress();
-    }
-    else if (millis() - millisSinceChange > LONG_PRESS_MS) {
-      longPress();
-    }
-    else if (millis() - millisSinceChange > SHORT_PRESS_MS) {
-      shortPress();
-    }
-    else {
-      //Too short to register as a press
-    }
-  }
-  else {
-    //Just been pressed - do nothing until released.
-  }
-  millisSinceChange = millis();
-}
-
 
 //
 // This routine handles state changes and MQTT publishing
@@ -251,7 +188,6 @@ void setup() {
   Serial.println(F("Initialising"));
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(LED_PIN, OUTPUT);
 
   digitalWrite(LED_PIN, HIGH); //LED off.
@@ -273,10 +209,6 @@ void setup() {
   ArduinoOTA.setHostname(custom_unit_id.getValue());
   ArduinoOTA.setPassword(OTA_PASS);
   ArduinoOTA.begin();
-
-  // Enable interrupt for button press
-  Serial.println(F("Enabling touch switch interrupt"));
-  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), buttonChangeCallback, CHANGE);
 }
 
 

@@ -7,7 +7,7 @@
 
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 
-#define CONFIG_VERSION "102"
+#define CONFIG_VERSION "004TEHU"
 
 //flag for saving data
 bool shouldSaveConfig = false;
@@ -29,7 +29,7 @@ void initWifiManager(boolean zapall) {
   Serial.println(F("initWifiManager"));
   if (zapall)
     Serial.println(F("Wifi zap requested"));
-    
+
   //read configuration from FS json
   Serial.println(F("mounting FS..."));
   boolean zapFS = false;
@@ -53,7 +53,7 @@ void initWifiManager(boolean zapall) {
         if (json.success())
         {
           Serial.println(F("\nparsed json"));
-          if (json.containsKey("cfg_version") && !strncasecmp_P(json["cfg_version"], CONFIG_VERSION, 3))
+          if (json.containsKey("cfg_version") && !strcasecmp_P(json["cfg_version"], CONFIG_VERSION))
           {
             strcpy(mqtt_server, json["mqtt_server"]);
             strcpy(mqtt_port, json["mqtt_port"]);
@@ -74,6 +74,11 @@ void initWifiManager(boolean zapall) {
           zapFS = true;
         }
       }
+    }
+    else
+    {
+      Serial.println(F("no config.json"));
+      zapFS = true;
     }
   } else {
     Serial.println("failed to mount FS");
@@ -113,7 +118,7 @@ void initWifiManager(boolean zapall) {
   wifiManager.addParameter(&custom_group_id);
 
   // reset settings - for testing
-  if (zapall) {
+  if (zapall || zapFS) {
     Serial.println(F("Zapping wifi manager settings..."));
     wifiManager.resetSettings();
   }
@@ -175,3 +180,21 @@ void initWifiManager(boolean zapall) {
   Serial.println(F("local ip"));
   Serial.println(WiFi.localIP());
 }
+
+String getDeviceMeta() {
+  DynamicJsonBuffer jsonBuffer;
+  JsonObject& json = jsonBuffer.createObject();
+  json["cfg_version"] = CONFIG_VERSION;
+  json["mqtt_server"] = mqtt_server;
+  json["mqtt_port"] = mqtt_port;
+  json["unit_id"] = unit_id;
+  json["group_id"] = group_id;
+  json["local_ip"] = WiFi.localIP().toString();
+  json["rssi"] = WiFi.RSSI();
+  json["chip_id"] = String(ESP.getChipId(), 16);
+  json["uptime"] = uptime;
+  String jsonStr;
+  json.printTo(jsonStr);
+  return jsonStr;
+}
+

@@ -263,7 +263,7 @@ void handleStatusChange() {
 
   // publish event if touched
   if (sendEvent) {
-    const char* payload = (relayState == 0) ? "0" : "1";
+    const char* payload = (relayState == 0) ? "off" : "on";
     Serial.print(F("MQTT pub: "));
     Serial.print(payload);
     Serial.print(F(" to "));
@@ -279,7 +279,7 @@ void handleStatusChange() {
 
   // publish state when requested to do so
   if (sendStatus) {
-    const char* payload = (relayState == 0) ? "0" : "1";
+    const char* payload = (relayState == 0) ? "off" : "on";
     Serial.print(F("MQTT pub: "));
     Serial.print(payload);
     Serial.print(F(" to "));

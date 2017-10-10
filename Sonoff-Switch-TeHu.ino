@@ -121,16 +121,17 @@ void buttonChangeCallback() {
 void handleStatusChange() {
 
   // publish relay state, pong, event and status messages
-  mqttPublish();
+  //mqttPublish();
 
   if (sendSensors)
   {
     DynamicJsonBuffer jsonBuffer;
     JsonObject& json = jsonBuffer.createObject();
-
+    boolean hasData = false;
     if (!isnan(temp))
     {
-      json["temp"] = String(temp).c_str();
+      json["temp"] = round(temp*10)/10.0;
+      hasData = true;
     }
     else
     {
@@ -138,19 +139,22 @@ void handleStatusChange() {
     }
     if (!isnan(humid))
     {
-      json["humid"] = String(humid).c_str();
+      json["humid"] = round(humid*10)/10.0;
+      hasData = true;
     }
     else
     {
       Serial.println(F("No humidity data"));
     }
-    String jsonStr;
-    json.printTo(jsonStr);
-    Serial.print(F("MQTT pub: "));
-    Serial.print(jsonStr);
-    Serial.print(F(" to "));
-    Serial.println(sensorTopic);
-    client.publish(sensorTopic.c_str(), jsonStr.c_str());
+    if (hasData) {
+      String jsonStr;
+      json.printTo(jsonStr);
+      Serial.print(F("MQTT pub: "));
+      Serial.print(jsonStr);
+      Serial.print(F(" to "));
+      Serial.println(sensorTopic);
+      client.publish(sensorTopic.c_str(), jsonStr.c_str());
+    }
     sendSensors = false;
   }
 }
@@ -205,11 +209,13 @@ void loop() {
   // handle mqtt
   mqttLoop();
 
-
   // Check MQTT connection
   if (millis() - lastMQTTCheck >= MQTT_CHECK_MS) {
+
     uptime += MQTT_CHECK_MS / 1000;
+    Serial.print(F("mqttCheckConnection? "));
     mqttCheckConnection();
+
     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
     humid = dht.readHumidity();
     // Read temperature as Celsius (the default)

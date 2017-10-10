@@ -102,8 +102,7 @@ bool printedWifiToSerial = false;
 String eventTopic;       // published when the switch is touched
 String groupEventTopic;  // published when the switch was long touched
 String statusTopic;      // published when the relay changes state wo switch touch
-String sensorTempTopic;  // publish temp sensor value
-String sensorHumidTopic; // publish humidity sensor value
+String sensorTopic;      // publish sensor values
 String pongStatusTopic;  // publish node status topic
 String pongMetaTopic;    // publish node meta topic
 String pingTopic;        // subscribe to nodes ping topic
@@ -290,13 +289,16 @@ void handleStatusChange() {
 
   if (sendSensors)
   {
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& json = jsonBuffer.createObject();
+	
     if (!isnan(temp))
     {
       Serial.print(F("MQTT pub: "));
       Serial.print(temp);
       Serial.print(F(" to "));
       Serial.println(sensorTempTopic);
-      client.publish(sensorTempTopic.c_str(), String(temp).c_str());
+	  json["temp"] = String(temp).c_str();
     }
     else
     {
@@ -308,12 +310,15 @@ void handleStatusChange() {
       Serial.print(humid);
       Serial.print(F(" to "));
       Serial.println(sensorHumidTopic);
-      client.publish(sensorHumidTopic.c_str(), String(humid).c_str());
+  	  json["humid"] = String(humid).c_str();
     }
     else
     {
       Serial.println(F("No humidity data"));
     }
+	String jsonStr;
+	json.printTo(jsonStr);
+    client.publish(sensorTopic.c_str(), jsonStr.c_str());
     sendSensors = false;
   }
 }
@@ -338,8 +343,7 @@ void setup() {
   eventTopic = String(F("event/")) + custom_unit_id.getValue() + String(F("/switch"));
   groupEventTopic = String(F("event/")) + custom_group_id.getValue() + String(F("/switch"));
   statusTopic = String(F("status/")) + custom_unit_id.getValue() + String(F("/relay"));
-  sensorTempTopic = String(F("sensor/")) + custom_unit_id.getValue() + String(F("/temp"));
-  sensorHumidTopic = String(F("sensor/")) + custom_unit_id.getValue() + String(F("/humid"));
+  sensorTopic = String(F("sensor/")) + custom_unit_id.getValue() + String(F("/value"));
   pongStatusTopic = String(F("pong/")) + custom_unit_id.getValue() + String(F("/status"));
   pongMetaTopic = String(F("pong/")) + custom_unit_id.getValue() + String(F("/meta"));
   // and subscribe topic

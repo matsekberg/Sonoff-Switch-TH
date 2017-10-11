@@ -25,6 +25,7 @@
 
 // DO EDIT
 #define CONFIG_VERSION "THSW001"
+#define TH10
 // END - DO EDIT
 
 
@@ -114,6 +115,8 @@ void buttonChangeCallback() {
   millisSinceChange = millis();
 }
 
+DynamicJsonBuffer jsonBuffer(250);
+
 
 //
 // This routine handles state changes and MQTT publishing
@@ -121,39 +124,22 @@ void buttonChangeCallback() {
 void handleStatusChange() {
 
   // publish relay state, pong, event and status messages
-  //mqttPublish();
+  mqttPublish();
 
   if (sendSensors)
   {
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    boolean hasData = false;
-    if (!isnan(temp))
+    if (isnan(temp) || isnan(humid))
     {
-      json["temp"] = round(temp*10)/10.0;
-      hasData = true;
+      Serial.println("No sensor data");
     }
     else
     {
-      Serial.println(F("No temp data"));
-    }
-    if (!isnan(humid))
-    {
-      json["humid"] = round(humid*10)/10.0;
-      hasData = true;
-    }
-    else
-    {
-      Serial.println(F("No humidity data"));
-    }
-    if (hasData) {
+      JsonObject& json = jsonBuffer.createObject();
+      json["temp"] = round(temp * 10 + 0.5) / 10.0;
+      json["humid"] = round(humid * 10 + 0.5) / 10.0;
       String jsonStr;
       json.printTo(jsonStr);
-      Serial.print(F("MQTT pub: "));
-      Serial.print(jsonStr);
-      Serial.print(F(" to "));
-      Serial.println(sensorTopic);
-      client.publish(sensorTopic.c_str(), jsonStr.c_str());
+      mqttPublishMessage(sensorTopic.c_str(), jsonStr.c_str());
     }
     sendSensors = false;
   }
@@ -211,21 +197,25 @@ void loop() {
 
   // Check MQTT connection
   if (millis() - lastMQTTCheck >= MQTT_CHECK_MS) {
+    lastMQTTCheck = millis();
 
     uptime += MQTT_CHECK_MS / 1000;
-    Serial.print(F("mqttCheckConnection? "));
     mqttCheckConnection();
+
+    Serial.print(F("sensor read... "));
 
     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
     humid = dht.readHumidity();
     // Read temperature as Celsius (the default)
     temp = dht.readTemperature();
-    lastMQTTCheck = millis();
+    Serial.println(F("done"));
+
     sendSensors = true;
   }
 
   // Handle any state change and MQTT publishing
   handleStatusChange();
+
 
   delay(50);
 }

@@ -205,9 +205,15 @@ void loop() {
     Serial.print(F("sensor read... "));
 
     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-    humid = dht.readHumidity();
+    float f1 = dht.readHumidity();
+    float f2 = dht.readHumidity();
+    if (!isnan(f1)) humid = f1;
+    if (!isnan(f2) && !isnan(humid)) humid = (humid + f2) / 2.0;
     // Read temperature as Celsius (the default)
-    temp = dht.readTemperature();
+    f1 = dht.readTemperature();
+    f2 = dht.readTemperature();
+    if (!isnan(f1)) temp = f1;
+    if (!isnan(f2) && !isnan(temp)) temp = (temp + f2) / 2.0;
     Serial.println(F("done"));
 
     sendSensors = true;

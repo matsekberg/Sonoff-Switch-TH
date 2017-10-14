@@ -44,12 +44,12 @@
 //#define DHTTYPE DHT11   // DHT 11
 //#define DHTTYPE DHT22   // DHT 22  (AM2302), AM2321
 #define DHTTYPE DHT21   // DHT 21 (AM2301)
-
-
 float humid = NAN;
 float temp = NAN;
 boolean sendSensors = false;
 DHT dht(DHTPIN, DHTTYPE);
+
+
 
 //
 // MQTT message arrived, decode
@@ -135,8 +135,11 @@ void handleStatusChange() {
     else
     {
       JsonObject& json = jsonBuffer.createObject();
-      json["temp"] = round(temp * 10 + 0.5) / 10.0;
-      json["humid"] = round(humid * 10 + 0.5) / 10.0;
+      char buf[10];
+      dtostrf(temp + 0.05, 5, 1, buf);
+      json["temp"] = buf;
+      dtostrf(humid + 0.05, 5, 1, buf);
+      json["humid"] = buf;
       String jsonStr;
       json.printTo(jsonStr);
       mqttPublishMessage(sensorTopic.c_str(), jsonStr.c_str());
@@ -162,6 +165,7 @@ void mqttCallbackCreateTopics() {
 //
 void setup() {
   Serial.begin(115200);
+  delay(1000);
   Serial.println(F("Initialising"));
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
@@ -203,7 +207,6 @@ void loop() {
     mqttCheckConnection();
 
     Serial.print(F("sensor read... "));
-
     // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
     float f1 = dht.readHumidity();
     float f2 = dht.readHumidity();

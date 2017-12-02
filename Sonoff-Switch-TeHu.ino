@@ -135,11 +135,11 @@ void handleStatusChange() {
     else
     {
       JsonObject& json = jsonBuffer.createObject();
-      char buf[10];
-      dtostrf(temp + 0.05, 5, 1, buf);
-      json["temp"] = buf;
-      dtostrf(humid + 0.05, 5, 1, buf);
-      json["humid"] = buf;
+      char buf1[10],buf2[10];
+      dtostrf(temp + 0.05, 5, 1, buf1);
+      dtostrf(humid + 0.05, 5, 1, buf2);
+      json["temp"] = buf1;
+      json["humid"] = buf2;
       String jsonStr;
       json.printTo(jsonStr);
       mqttPublishMessage(sensorTopic.c_str(), jsonStr.c_str());
